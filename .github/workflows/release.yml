@@ -2,14 +2,15 @@ name: release
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Tag del release a publicar'
+        description: 'Tag a publicar (vacío = siguiente versión automática)'
         required: false
-        default: 'dev'
+        default: ''
 
 permissions:
   contents: write
@@ -20,13 +21,15 @@ concurrency:
 
 jobs:
   release:
-    name: tools → test → release
+    name: tools → test → hash → release
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Preparar herramientas
         run: |
@@ -69,22 +72,79 @@ jobs:
         if: always()
         run: sudo chown -R "$(id -u):$(id -g)" .
 
-      - name: Preparar artefactos del release
+      - name: Verificar hash en cada commit
         run: |
-          if [ -n '${{ github.event.inputs.version }}' ] && [ '${{ github.event_name }}' = 'workflow_dispatch' ]; then
-            VERSION='${{ github.event.inputs.version }}'
+          make release REPO='${{ github.repository }}' VERSION="ci-${GITHUB_SHA::7}"
+          BASE_URL="file://$PWD/dist" sh dist/install.sh -p "$RUNNER_TEMP/xroot-hash-check"
+          cmp "$RUNNER_TEMP/xroot-hash-check/bin/xd" xd
+          (cd dist && sha256sum -c SHA256SUMS)
+          printf 'Hashes verificados para %s\n' "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Decidir versión y salto de release
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          input_version='${{ github.event.inputs.version }}'
+          if [ -n "$input_version" ]; then
+            VERSION="$input_version"
+          elif [ '${{ github.ref_type }}' = 'tag' ]; then
+            VERSION='${{ github.ref_name }}'
           else
-            VERSION="${GITHUB_REF_NAME}"
+            latest=$(gh release view --json tagName -q .tagName 2>/dev/null || true)
+            if [ -z "$latest" ]; then
+              VERSION='v0.1.0'
+            else
+              VERSION=$(python3 - "$latest" <<'PYVER'
+          import re
+          import sys
+
+          match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", sys.argv[1].strip())
+          if match:
+              major, minor, patch = match.groups()
+              print(f"v{major}.{minor}.{int(patch) + 1}")
+          else:
+              print("v0.1.0")
+          PYVER
+          )
+            fi
           fi
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+          if [ '${{ github.ref_type }}' = 'tag' ]; then
+            previous=$(git describe --tags --abbrev=0 "${GITHUB_SHA}^" 2>/dev/null || true)
+            if [ -n "$previous" ]; then
+              range="$previous..$GITHUB_SHA"
+            else
+              range='-1'
+            fi
+          else
+            range='-1'
+          fi
+          if git log $range --pretty=%B | grep -qiF '[skip release]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            printf 'Release omitido: [skip release] en los commits (%s)\n' "$range" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Preparar artefactos del release
+        if: steps.meta.outputs.skip != 'true'
+        run: |
           make release REPO='${{ github.repository }}' VERSION="$VERSION"
           ls -lh dist
           cat dist/SHA256SUMS
 
       - name: Publicar release
+        if: steps.meta.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if ! git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            git tag "$VERSION"
+            git push origin "$VERSION"
+          fi
           if gh release view "$VERSION" >/dev/null 2>&1; then
             gh release upload "$VERSION" dist/* --clobber
           else

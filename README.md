@@ -130,11 +130,21 @@ La batería prepara rootfs aislados en `/tmp` y `/content`, verifica los SHA int
 
 ## 🏗️ Releases
 
-Hay **un único workflow** (`.github/workflows/release.yml`) que prepara las herramientas, ejecuta lint y tests y publica el release al pushear un tag `v*`:
+Hay **un único workflow** (`.github/workflows/release.yml`) que prepara las herramientas, ejecuta lint y tests, verifica los hashes en **cada commit** y publica el release. Se dispara con cada push a `main`, con tags `v*` o manualmente desde **Actions**:
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+git commit -m "fix: something"
+git push                      # verifica hash + tests, sin publicar
+git tag v0.1.0 && git push origin v0.1.0   # publica ese tag
 ```
+
+Reglas del pipeline:
+
+| Regla | Comportamiento |
+|:---|:---|
+| **Hash en cada commit** | Tras los tests se genera `dist/`, se valida `sha256sum -c SHA256SUMS` y se instala con `file://` para comprobar la verificación del instalador. |
+| **`[skip release]`** | Si el commit (o los commits desde el tag anterior) contienen `[skip release]`, se omiten artefactos y publicación, pero se siguen ejecutando build, lint, tests y hash. |
+| **Versión automática** | Al publicar desde **Actions** sin `version`, se toma el último release y se incrementa el PATCH (`v0.1.0` → `v0.1.1`), se crea el tag y se publica. Con tag push se usa el tag; con `version` se respeta el valor dado. |
 
 Artefactos publicados:
 
