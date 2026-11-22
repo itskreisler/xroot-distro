@@ -1,0 +1,96 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tag del release a publicar'
+        required: false
+        default: 'dev'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: tools → test → release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preparar herramientas
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            build-essential \
+            libcurl4-openssl-dev \
+            zlib1g-dev \
+            liblzma-dev \
+            libssl-dev \
+            clang-format \
+            clang-tidy \
+            shellcheck \
+            python3
+          command -v gcc make clang-format clang-tidy shellcheck gh
+
+      - name: Compilar y analizar
+        run: |
+          make binaries
+          make lint
+          shellcheck install.sh test.sh
+
+      - name: Preparar entorno de pruebas (rootfs Alpine)
+        run: |
+          sudo mkdir -p /content
+          sudo cp README.md /content/README.md
+          sudo env XROOT_DISTRO_SHA256=c5ca053cfe1d85c5b96dff8b9bc57045f7f184a30ffb6b65776409ca90388677 \
+            ./xroot-distro install -n=alpine \
+            https://dl-cdn.alpinelinux.org/alpine/v3.24/releases/x86_64/alpine-minirootfs-3.24.2-x86_64.tar.gz
+          sudo ./xroot-distro list
+
+      - name: Batería completa de pruebas (requiere root)
+        run: |
+          set -o pipefail
+          sudo bash test.sh
+          grep '===== RESUMEN' test.log | tail -n 1 | tee -a "$GITHUB_STEP_SUMMARY"
+        shell: bash
+
+      - name: Restaurar permisos del workspace
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" .
+
+      - name: Preparar artefactos del release
+        run: |
+          if [ -n '${{ github.event.inputs.version }}' ] && [ '${{ github.event_name }}' = 'workflow_dispatch' ]; then
+            VERSION='${{ github.event.inputs.version }}'
+          else
+            VERSION="${GITHUB_REF_NAME}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          make release REPO='${{ github.repository }}' VERSION="$VERSION"
+          ls -lh dist
+          cat dist/SHA256SUMS
+
+      - name: Publicar release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" dist/* --clobber
+          else
+            gh release create "$VERSION" dist/* \
+              --title "$VERSION" \
+              --generate-notes \
+              --verify-tag
+          fi
+          gh release view "$VERSION" --json tagName,assets
