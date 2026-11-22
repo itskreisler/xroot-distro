@@ -1,7 +1,7 @@
 #!/bin/sh
 # Instalador POSIX de xroot-distro desde GitHub Releases.
 # Funciona con: curl -fsSL <raw>/install.sh | sh
-# El Makefile sustituye __REPO__ por owner/repo al generar dist/install.sh.
+# El instalador se sirve desde el repo; los releases solo publican los tarballs.
 set -eu
 
 REPO="__REPO__"
@@ -93,8 +93,7 @@ if [ "$#" -gt 0 ]; then
   die "argumentos inesperados: $*"
 fi
 
-# Al ejecutar el install.sh del repo (sin pasar por make release), el marcador
-# __REPO__ se resuelve al repositorio real o a GITHUB_REPOSITORY.
+# El marcador __REPO__ se resuelve al repositorio real o a GITHUB_REPOSITORY.
 if [ "$REPO" = "__REPO__" ]; then
   REPO="${GITHUB_REPOSITORY:-itskreisler/xroot-distro}"
 fi
@@ -124,26 +123,19 @@ if [ -z "$ARCH" ]; then
   esac
 fi
 
-# Sin version explicita, consultamos el ultimo release publicado.
-if [ -z "$VERSION" ] || [ "$VERSION" = dev ]; then
-  if [ -z "$BASE_URL" ]; then
-    VERSION=$(curl -fsSL --retry 2 --max-time 30 \
-      "https://api.github.com/repos/$REPO/releases/latest" |
-      grep -m1 '"tag_name"' |
-      sed 's/.*"tag_name": *"\([^"]*\)".*/\1/') || die "no se pudo consultar el ultimo release de $REPO"
-    [ -n "$VERSION" ] || die "no hay releases publicados en $REPO (usa -v/--version)"
-  else
-    VERSION=dev
-  fi
-fi
-
+# Por defecto se usa siempre el ultimo release de GitHub. Con -v/--version
+# se fija un tag concreto; BASE_URL sigue permitiendo espejos o file://.
 if [ -z "$BASE_URL" ]; then
-  BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
+  if [ -n "$VERSION" ] && [ "$VERSION" != dev ]; then
+    BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
+  else
+    BASE_URL="https://github.com/${REPO}/releases/latest/download"
+  fi
 fi
 BASE_URL="${BASE_URL%/}"
 ASSET="xroot-distro-linux-${ARCH}.tar.gz"
 
-for tool in curl tar grep sed sha256sum install mktemp id uname; do
+for tool in curl tar grep sha256sum install mktemp id uname; do
   command -v "$tool" >/dev/null 2>&1 || die "falta la herramienta: $tool"
 done
 

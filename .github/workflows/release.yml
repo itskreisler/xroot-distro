@@ -75,7 +75,7 @@ jobs:
       - name: Verificar hash en cada commit
         run: |
           make release REPO='${{ github.repository }}' VERSION="ci-${GITHUB_SHA::7}"
-          BASE_URL="file://$PWD/dist" sh dist/install.sh -p "$RUNNER_TEMP/xroot-hash-check"
+          BASE_URL="file://$PWD/dist" sh install.sh -p "$RUNNER_TEMP/xroot-hash-check"
           cmp "$RUNNER_TEMP/xroot-hash-check/bin/xd" xd
           (cd dist && sha256sum -c SHA256SUMS)
           printf 'Hashes verificados para %s\n' "$GITHUB_SHA" | tee -a "$GITHUB_STEP_SUMMARY"

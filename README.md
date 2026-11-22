@@ -146,20 +146,21 @@ Reglas del pipeline:
 | **`[skip release]`** | Si el commit (o los commits desde el tag anterior) contienen `[skip release]`, se omiten artefactos y publicación, pero se siguen ejecutando build, lint, tests y hash. |
 | **Versión automática** | Al publicar desde **Actions** sin `version`, se toma el último release y se incrementa el PATCH (`v0.1.0` → `v0.1.1`), se crea el tag y se publica. Con tag push se usa el tag; con `version` se respeta el valor dado. |
 
-Artefactos publicados:
+Artefactos publicados (el instalador **no** se publica, se sirve desde el repo):
 
 ```text
 dist/xroot-distro-linux-x86_64.tar.gz   # xroot-distro + xd
 dist/xroot-distro-src-v0.1.0.tar.gz     # fuentes
-dist/install.sh                         # con REPO sustituido
-dist/SHA256SUMS                         # los tres artefactos
+dist/SHA256SUMS                         # los dos tarballs
 ```
 
-Para generarlos localmente:
+`install.sh` usa por defecto `https://github.com/itskreisler/xroot-distro/releases/latest/download`, así que siempre instala el último release sin consultar la API de GitHub. Con `-v v0.1.0` se fija un tag concreto.
+
+Para generarlos localmente y probar el instalador contra `dist/`:
 
 ```bash
 make release REPO=owner/repo VERSION=v0.1.0
-BASE_URL="file://$PWD/dist" sh dist/install.sh -p /tmp/xroot-install
+BASE_URL="file://$PWD/dist" sh install.sh -p /tmp/xroot-install
 ```
 
 También puedes disparar el workflow manualmente desde la pestaña **Actions** (`workflow_dispatch`).

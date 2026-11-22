@@ -93,10 +93,8 @@ release: binaries ## Prepara artefactos para GitHub Releases en dist/
 	mkdir -p $(DIST)/pkg $(DIST)/src
 	cp $(BIN) $(ALIAS) $(DIST)/pkg/
 	tar -czf $(DIST)/$(ASSET) -C $(DIST)/pkg $(BIN) $(ALIAS)
-	sed 's|__REPO__|$(REPO)|g' install.sh > $(DIST)/install.sh
-	chmod +x $(DIST)/install.sh
 	cp Makefile xroot-distro.c test.sh README.md .clang-tidy $(DIST)/src/
 	tar -czf $(DIST)/xroot-distro-src-$(VERSION).tar.gz -C $(DIST)/src .
-	cd $(DIST) && sha256sum $(ASSET) xroot-distro-src-$(VERSION).tar.gz install.sh > SHA256SUMS
+	cd $(DIST) && sha256sum $(ASSET) xroot-distro-src-$(VERSION).tar.gz > SHA256SUMS
 	rm -rf $(DIST)/pkg $(DIST)/src
 	@echo 'Release preparada en $(DIST)/'
