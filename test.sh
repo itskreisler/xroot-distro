@@ -217,7 +217,7 @@ contains 'arquitectura x86_64' 'x86_64' "$out"
 
 say '18. BINARIO CORTO xd, install -h E IMÁGENES INTEGRADAS'
 DIR="$(dirname "$0")"
-[ -x "$DIR/xd" ]; rc=$?; check 'binario corto xd existe' $rc
+if [ -x "$DIR/xd" ]; then rc=0; else rc=1; fi; check 'binario corto xd existe' $rc
 out=$(run "$DIR/xd" help); check 'xd help' $?
 contains 'xd help usa el nombre xd' 'Uso: xd' "$out"
 out=$(run "$BIN" install -h); check 'install -h' $?
@@ -228,9 +228,9 @@ XDBUILT=/tmp/xroot-xd-builtin-test
 rm -rf "$XDBUILT"; mkdir -p "$XDBUILT/.cache"
 cp /content/.xroot-distro/.cache/*alpine-minirootfs-3.24.2* /content/.xroot-distro/.cache/*ubuntu-base-24.04.5* "$XDBUILT/.cache/" 2>/dev/null || true
 out=$(run env -u XROOT_DISTRO_SHA256 XROOT_DISTRO_ROOT="$XDBUILT" "$DIR/xd" i alpine); check 'xd i alpine (URL integrada, sin -n)' $?
-out=$(sha256sum "$XDBUILT/.cache/"*alpine-minirootfs-3.24.2* | cut -d' ' -f1); [ "$out" = c5ca053cfe1d85c5b96dff8b9bc57045f7f184a30ffb6b65776409ca90388677 ]; rc=$?; check 'SHA256 integrado de Alpine coincide' $rc
+out=$(sha256sum "$XDBUILT/.cache/"*alpine-minirootfs-3.24.2* | cut -d' ' -f1); if [ "$out" = c5ca053cfe1d85c5b96dff8b9bc57045f7f184a30ffb6b65776409ca90388677 ]; then rc=0; else rc=1; fi; check 'SHA256 integrado de Alpine coincide' $rc
 out=$(run env -u XROOT_DISTRO_SHA256 XROOT_DISTRO_ROOT="$XDBUILT" "$DIR/xd" add ubuntu:24.04); check 'xd add ubuntu:24.04 (URL integrada)' $?
-out=$(sha256sum "$XDBUILT/.cache/"*ubuntu-base-24.04.5* | cut -d' ' -f1); [ "$out" = e77b6f10c2590cef872b33ee9f635a0e3fd1f57fb074c0e52b5c7f56147a0c86 ]; rc=$?; check 'SHA256 integrado de Ubuntu coincide' $rc
+out=$(sha256sum "$XDBUILT/.cache/"*ubuntu-base-24.04.5* | cut -d' ' -f1); if [ "$out" = e77b6f10c2590cef872b33ee9f635a0e3fd1f57fb074c0e52b5c7f56147a0c86 ]; then rc=0; else rc=1; fi; check 'SHA256 integrado de Ubuntu coincide' $rc
 out=$(run env XROOT_DISTRO_ROOT="$XDBUILT" "$DIR/xd" list); check 'list con imágenes integradas' $?
 contains 'nombre automático alpine' 'alpine' "$out"
 contains 'nombre automático ubuntu' 'ubuntu' "$out"
@@ -318,9 +318,9 @@ rm -rf "$FFROOT"; mkdir -p "$FFROOT/.cache"
 cp /content/.xroot-distro/.cache/*alpine-minirootfs-3.24.2* "$FFROOT/.cache/" 2>/dev/null || true
 cp /content/.xroot-distro/.cache/*ubuntu-base-24.04.5* "$FFROOT/.cache/" 2>/dev/null || true
 out=$(run env -u XROOT_DISTRO_SHA256 XROOT_DISTRO_ROOT="$FFROOT" "$DIR/xd" i -n=ff-test-alpine alpine); check 'contenedor Alpine nuevo para fastfetch' $?
-out=$(sha256sum "$FFROOT/.cache/"*alpine-minirootfs-3.24.2* | cut -d' ' -f1); [ "$out" = c5ca053cfe1d85c5b96dff8b9bc57045f7f184a30ffb6b65776409ca90388677 ]; rc=$?; check 'SHA256 integrado del Alpine nuevo' $rc
+out=$(sha256sum "$FFROOT/.cache/"*alpine-minirootfs-3.24.2* | cut -d' ' -f1); if [ "$out" = c5ca053cfe1d85c5b96dff8b9bc57045f7f184a30ffb6b65776409ca90388677 ]; then rc=0; else rc=1; fi; check 'SHA256 integrado del Alpine nuevo' $rc
 out=$(run env -u XROOT_DISTRO_SHA256 XROOT_DISTRO_ROOT="$FFROOT" "$DIR/xd" i -n=ff-test-ubuntu ubuntu); check 'contenedor Ubuntu nuevo para fastfetch' $?
-out=$(sha256sum "$FFROOT/.cache/"*ubuntu-base-24.04.5* | cut -d' ' -f1); [ "$out" = e77b6f10c2590cef872b33ee9f635a0e3fd1f57fb074c0e52b5c7f56147a0c86 ]; rc=$?; check 'SHA256 integrado del Ubuntu nuevo' $rc
+out=$(sha256sum "$FFROOT/.cache/"*ubuntu-base-24.04.5* | cut -d' ' -f1); if [ "$out" = e77b6f10c2590cef872b33ee9f635a0e3fd1f57fb074c0e52b5c7f56147a0c86 ]; then rc=0; else rc=1; fi; check 'SHA256 integrado del Ubuntu nuevo' $rc
 out=$(run env XROOT_DISTRO_ROOT="$FFROOT" "$DIR/xd" login ff-test-alpine --user root -- /bin/sh -c 'apk add --no-cache fastfetch >/dev/null 2>&1; echo apk_rc=$?'); check 'apk add fastfetch en Alpine nuevo' $?
 contains 'apk de Alpine devuelve 0' 'apk_rc=0' "$out"
 out=$(run env XROOT_DISTRO_ROOT="$FFROOT" "$DIR/xd" login ff-test-alpine --user root -- /usr/bin/fastfetch --version); check 'fastfetch --version en Alpine' $?
@@ -356,7 +356,7 @@ if [ -f "/content/.xroot-distro/.cache/$CACHED_XZ" ]; then
 else
   out=$(run curl -fsSL --retry 2 --max-time 180 -o "$XZROOT/.cache/$CACHED_XZ" "$DEB_URL"); check 'descarga del rootfs Debian xz' $?
 fi
-out=$(sha256sum "$XZROOT/.cache/$CACHED_XZ" | cut -d' ' -f1); [ "$out" = "$DEB_SHA" ]; rc=$?; check 'SHA256 del rootfs Debian xz' $rc
+out=$(sha256sum "$XZROOT/.cache/$CACHED_XZ" | cut -d' ' -f1); if [ "$out" = "$DEB_SHA" ]; then rc=0; else rc=1; fi; check 'SHA256 del rootfs Debian xz' $rc
 out=$(run env -u XROOT_DISTRO_SHA256 XROOT_DISTRO_ROOT="$XZROOT" "$DIR/xd" i -n=debian-xz-test debian); check 'xd i debian (tar.xz nativo)' $?
 out=$(run env XROOT_DISTRO_ROOT="$XZROOT" "$DIR/xd" list); check 'list con Debian' $?
 contains 'list detecta Debian' 'Debian GNU/Linux 12 (bookworm)' "$out"
