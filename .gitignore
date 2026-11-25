@@ -1,6 +1,7 @@
 # Binario compilado y artefactos de prueba (se regeneran con make / test.sh)
 xroot-distro
 xd
+*.exe
 test.log
 test.stdout
 dist/
