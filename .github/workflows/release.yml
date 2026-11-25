@@ -11,6 +11,11 @@ on:
         description: 'Tag a publicar (vacío = siguiente versión automática)'
         required: false
         default: ''
+      windows_wsl_smoke:
+        description: 'Ejecutar el smoke test real de Debian en WSL2 (no publicar release)'
+        required: false
+        type: boolean
+        default: false
   pull_request:
     branches: [main]
 
@@ -23,10 +28,10 @@ concurrency:
 
 jobs:
   windows-smoke:
-    name: Windows launcher smoke test
+    name: Windows launcher build and WSL2 smoke test
     if: ${{ !contains(github.event.head_commit.message, '[skip windows]') }}
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     permissions:
       contents: read
 
@@ -48,7 +53,7 @@ jobs:
           cp xroot-distro.exe xd.exe
 
       - name: Instalar WSL2 con Debian
-        if: ${{ !contains(github.event.head_commit.message, '[skip windows-tests]') }}
+        if: ${{ inputs.windows_wsl_smoke && !contains(github.event.head_commit.message, '[skip windows-tests]') }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -60,7 +65,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'La distribución no se está ejecutando en WSL2' }
 
       - name: Compilar e instalar el binario Linux en WSL
-        if: ${{ !contains(github.event.head_commit.message, '[skip windows-tests]') }}
+        if: ${{ inputs.windows_wsl_smoke && !contains(github.event.head_commit.message, '[skip windows-tests]') }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -91,7 +96,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar xd en WSL: $LASTEXITCODE" }
 
       - name: Probar los ejecutables Windows contra WSL2
-        if: ${{ !contains(github.event.head_commit.message, '[skip windows-tests]') }}
+        if: ${{ inputs.windows_wsl_smoke && !contains(github.event.head_commit.message, '[skip windows-tests]') }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -108,7 +113,7 @@ jobs:
   release:
     name: tools → test → hash → release
     needs: windows-smoke
-    if: ${{ always() && github.event_name != 'pull_request' && (needs.windows-smoke.result == 'success' || needs.windows-smoke.result == 'skipped') }}
+    if: ${{ always() && github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.windows_wsl_smoke) && (needs.windows-smoke.result == 'success' || needs.windows-smoke.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 

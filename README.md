@@ -139,7 +139,7 @@ sudo make test       # batería completa (requiere root): PASS=200 FAIL=0
 
 La batería prepara rootfs aislados en `/tmp` y `/content`, verifica los SHA integrados, prueba binds, `backup`/`restore`/`reset`, intérpretes (`sh`, `bash`, `fish`, `python3`, `busybox`) y la instalación nativa de Debian desde `.tar.xz`.
 
-El workflow también prepara Debian bajo WSL2 en `windows-latest`, compila allí el binario Linux y ejecuta `xroot-distro.exe help` y `xd.exe help` para probar ambos lanzadores contra WSL real.
+En PRs, el workflow compila los lanzadores Windows. El smoke test real de WSL2 es opt-in desde **Actions → Run workflow → `windows_wsl_smoke`**: instala Debian, compila el binario Linux en esa distro y prueba `xroot-distro.exe help` y `xd.exe help`. Se deja opt-in porque el aprovisionamiento de WSL en runners Windows hospedados puede quedarse bloqueado; esta ejecución no publica un release.
 
 > [!NOTE]
 > **Probado en Google Colab.** El desarrollo y la batería completa se ejecutaron en un entorno Colab con `/content` como directorio de trabajo, usuario `root` y arquitectura `x86_64`: `PASS=200 FAIL=0`. `test.sh` usa rutas de Colab (`/content/.xroot-distro`, `/content/README.md`) y valida el bind de `/tmp` compartido entre el host y el chroot. El workflow de GitHub Actions recrea ese entorno creando `/content` antes de correr los tests.
