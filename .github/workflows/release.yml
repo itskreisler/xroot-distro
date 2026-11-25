@@ -11,6 +11,13 @@ on:
         description: 'Tag a publicar (vacío = siguiente versión automática)'
         required: false
         default: ''
+      windows_wsl_smoke:
+        description: 'Ejecutar el smoke test real de Debian en WSL2 (no publicar release)'
+        required: false
+        type: boolean
+        default: false
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
@@ -20,8 +27,93 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  windows-smoke:
+    name: Windows launcher build and WSL2 smoke test
+    if: ${{ !contains(github.event.head_commit.message, '[skip windows]') }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Preparar MinGW-w64
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+
+      - name: Compilar lanzadores Windows
+        shell: msys2 {0}
+        run: |
+          gcc -municode -static -O2 -Wall -Wextra -o xroot-distro.exe windows-launcher.c
+          cp xroot-distro.exe xd.exe
+
+      - name: Instalar WSL2 con Debian
+        if: ${{ inputs.windows_wsl_smoke && !contains(github.event.head_commit.message, '[skip windows-tests]') }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          wsl.exe --set-default-version 2
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo establecer WSL2: $LASTEXITCODE" }
+          wsl.exe --install Debian --web-download --no-launch
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar Debian en WSL: $LASTEXITCODE" }
+          wsl.exe --distribution Debian --user root --exec sh -lc "grep -qi 'microsoft.*WSL2' /proc/version"
+          if ($LASTEXITCODE -ne 0) { throw 'La distribución no se está ejecutando en WSL2' }
+
+      - name: Compilar e instalar el binario Linux en WSL
+        if: ${{ inputs.windows_wsl_smoke && !contains(github.event.head_commit.message, '[skip windows-tests]') }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $repoWindowsPath = (Resolve-Path .).Path
+          $repoLinuxPath = (& wsl.exe --distribution Debian --user root --exec wslpath -a $repoWindowsPath | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $repoLinuxPath) { throw 'No se pudo acceder al checkout desde WSL' }
+
+          $wslPrefix = @('--distribution', 'Debian', '--user', 'root', '--exec')
+          & wsl.exe @wslPrefix apt-get update -qq
+          if ($LASTEXITCODE -ne 0) { throw "apt-get update falló en WSL: $LASTEXITCODE" }
+
+          & wsl.exe @wslPrefix env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential libcurl4-openssl-dev zlib1g-dev liblzma-dev libssl-dev
+          if ($LASTEXITCODE -ne 0) { throw "La instalación de dependencias falló en WSL: $LASTEXITCODE" }
+
+          & wsl.exe @wslPrefix mkdir -p /tmp/xroot-distro-windows-smoke
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo crear el directorio de build en WSL: $LASTEXITCODE" }
+
+          & wsl.exe @wslPrefix cp -a "$repoLinuxPath/." /tmp/xroot-distro-windows-smoke/
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo copiar el código fuente a WSL: $LASTEXITCODE" }
+
+          & wsl.exe @wslPrefix make -C /tmp/xroot-distro-windows-smoke binaries
+          if ($LASTEXITCODE -ne 0) { throw "La compilación Linux falló en WSL: $LASTEXITCODE" }
+
+          & wsl.exe @wslPrefix install -m 755 /tmp/xroot-distro-windows-smoke/xroot-distro /usr/local/bin/xroot-distro
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar xroot-distro en WSL: $LASTEXITCODE" }
+
+          & wsl.exe @wslPrefix install -m 755 /tmp/xroot-distro-windows-smoke/xd /usr/local/bin/xd
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar xd en WSL: $LASTEXITCODE" }
+
+      - name: Probar los ejecutables Windows contra WSL2
+        if: ${{ inputs.windows_wsl_smoke && !contains(github.event.head_commit.message, '[skip windows-tests]') }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:XROOT_DISTRO_WSL_DISTRO = 'Debian'
+
+          $output = & .\xroot-distro.exe help
+          if ($LASTEXITCODE -ne 0) { throw "xroot-distro.exe terminó con $LASTEXITCODE" }
+          if (($output -join "`n") -notmatch 'Uso: xroot-distro') { throw 'xroot-distro.exe no devolvió la ayuda esperada desde WSL' }
+
+          $output = & .\xd.exe help
+          if ($LASTEXITCODE -ne 0) { throw "xd.exe terminó con $LASTEXITCODE" }
+          if (($output -join "`n") -notmatch 'Uso: xd') { throw 'xd.exe no devolvió la ayuda esperada desde WSL' }
+
   release:
     name: tools → test → hash → release
+    needs: windows-smoke
+    if: ${{ always() && github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.windows_wsl_smoke) && (needs.windows-smoke.result == 'success' || needs.windows-smoke.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -43,8 +135,10 @@ jobs:
             clang-format \
             clang-tidy \
             shellcheck \
+            gcc-mingw-w64-x86-64 \
+            zip \
             python3
-          command -v gcc make clang-format clang-tidy shellcheck gh
+          command -v gcc make clang-format clang-tidy shellcheck gh x86_64-w64-mingw32-gcc zip
 
       - name: Compilar y analizar
         run: |
@@ -75,6 +169,15 @@ jobs:
       - name: Verificar hash en cada commit
         run: |
           make release REPO='${{ github.repository }}' VERSION="ci-${GITHUB_SHA::7}"
+          make windows-launchers
+          mkdir -p dist/windows-wsl
+          cp xroot-distro.exe xd.exe install-wsl.ps1 dist/windows-wsl/
+          cp dist/xroot-distro-linux-x86_64.tar.gz dist/windows-wsl/
+          cp dist/SHA256SUMS dist/windows-wsl/
+          (cd dist/windows-wsl && zip -q ../xroot-distro-windows-wsl-x86_64.zip *)
+          rm -rf dist/windows-wsl
+          (cd dist && sha256sum xroot-distro-linux-x86_64.tar.gz xroot-distro-src-*.tar.gz \
+            xroot-distro-windows-wsl-x86_64.zip > SHA256SUMS)
           BASE_URL="file://$PWD/dist" sh install.sh -p "$RUNNER_TEMP/xroot-hash-check"
           cmp "$RUNNER_TEMP/xroot-hash-check/bin/xd" xd
           (cd dist && sha256sum -c SHA256SUMS)
@@ -133,6 +236,15 @@ jobs:
         if: steps.meta.outputs.skip != 'true'
         run: |
           make release REPO='${{ github.repository }}' VERSION="$VERSION"
+          make windows-launchers
+          mkdir -p dist/windows-wsl
+          cp xroot-distro.exe xd.exe install-wsl.ps1 dist/windows-wsl/
+          cp dist/xroot-distro-linux-x86_64.tar.gz dist/windows-wsl/
+          cp dist/SHA256SUMS dist/windows-wsl/
+          (cd dist/windows-wsl && zip -q ../xroot-distro-windows-wsl-x86_64.zip *)
+          rm -rf dist/windows-wsl
+          (cd dist && sha256sum xroot-distro-linux-x86_64.tar.gz xroot-distro-src-*.tar.gz \
+            xroot-distro-windows-wsl-x86_64.zip > SHA256SUMS)
           ls -lh dist
           cat dist/SHA256SUMS
 

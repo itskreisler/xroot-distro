@@ -83,6 +83,17 @@ El flag `--system` (o `-s`) sustituye el destino por `/usr/local/bin` y exige ro
 
 Dependencias para compilar: `gcc`, `make`, `libcurl4-openssl-dev`, `zlib1g-dev`, `liblzma-dev`, `libssl-dev`. Para lint: `clang-format`, `clang-tidy` y `shellcheck`.
 
+### Windows (WSL2)
+
+El núcleo depende de `chroot` y mounts Linux: no puede ejecutarse directamente como programa Windows. El release incluye lanzadores `.exe` que delegan a WSL2 y un instalador que coloca el binario Linux en la distribución WSL predeterminada. Se requiere una distribución WSL basada en Ubuntu/Debian con `apt`.
+
+1. Instala WSL2 y una distribución: `wsl --install -d Ubuntu`.
+2. Descarga y extrae `xroot-distro-windows-wsl-x86_64.zip` desde **Releases**.
+3. En PowerShell, ejecuta `powershell -ExecutionPolicy Bypass -File .\install-wsl.ps1`. Para elegir una distro instalada: añade `-Distro Ubuntu`.
+4. Abre una terminal nueva de Windows y ejecuta `xd help` o `xroot-distro help`.
+
+El instalador instala los binarios y sus dependencias en WSL y agrega los lanzadores al `PATH` del usuario de Windows. Los comandos se ejecutan como `root` dentro de WSL, necesario para las operaciones `chroot`. La configuración de `XROOT_DISTRO_WSL_DISTRO` permite seleccionar la distribución para los lanzamientos.
+
 ## 🧩 Imágenes
 
 | Short name | Rootfs | Tamaño |
@@ -128,6 +139,8 @@ sudo make test       # batería completa (requiere root): PASS=200 FAIL=0
 
 La batería prepara rootfs aislados en `/tmp` y `/content`, verifica los SHA integrados, prueba binds, `backup`/`restore`/`reset`, intérpretes (`sh`, `bash`, `fish`, `python3`, `busybox`) y la instalación nativa de Debian desde `.tar.xz`.
 
+En PRs, el workflow compila los lanzadores Windows. El smoke test real de WSL2 es opt-in desde **Actions → Run workflow → `windows_wsl_smoke`**: instala Debian, compila el binario Linux en esa distro y prueba `xroot-distro.exe help` y `xd.exe help`. Se deja opt-in porque el aprovisionamiento de WSL en runners Windows hospedados puede quedarse bloqueado; esta ejecución no publica un release.
+
 > [!NOTE]
 > **Probado en Google Colab.** El desarrollo y la batería completa se ejecutaron en un entorno Colab con `/content` como directorio de trabajo, usuario `root` y arquitectura `x86_64`: `PASS=200 FAIL=0`. `test.sh` usa rutas de Colab (`/content/.xroot-distro`, `/content/README.md`) y valida el bind de `/tmp` compartido entre el host y el chroot. El workflow de GitHub Actions recrea ese entorno creando `/content` antes de correr los tests.
 
@@ -153,8 +166,9 @@ Artefactos publicados (el instalador **no** se publica, se sirve desde el repo):
 
 ```text
 dist/xroot-distro-linux-x86_64.tar.gz   # xroot-distro + xd
+dist/xroot-distro-windows-wsl-x86_64.zip # lanzadores Windows + binario Linux + instalador WSL2
 dist/xroot-distro-src-v0.1.0.tar.gz     # fuentes
-dist/SHA256SUMS                         # los dos tarballs
+dist/SHA256SUMS                         # hashes de todos los artefactos
 ```
 
 `install.sh` usa por defecto `https://github.com/itskreisler/xroot-distro/releases/latest/download`, así que siempre instala el último release sin consultar la API de GitHub. Con `-v v0.1.0` se fija un tag concreto.
@@ -177,8 +191,10 @@ xroot-distro/
 ├── Makefile                       # targets build/test/lint/release/...
 ├── README.md
 ├── install.sh                     # instalador POSIX (curl | sh)
+├── install-wsl.ps1                # instalador de lanzadores Windows/WSL2
 ├── test.sh                        # 200 checks
 ├── xroot-distro.c                 # descarga, SHA, tar/tar.gz/tar.xz, chroot
+├── windows-launcher.c             # lanzador Windows que delega en WSL2
 ├── xroot-distro                   # binario compilado
 └── xd                             # alias corto
 ```

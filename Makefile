@@ -20,16 +20,21 @@ ALIAS    := xd
 SRC      := xroot-distro.c
 PREFIX   ?= /usr/local
 CC       ?= gcc
+WINDOWS_CC ?= x86_64-w64-mingw32-gcc
 CFLAGS   ?= -O2 -Wall -Wextra
 LDLIBS   := -lcurl -lz -llzma -lcrypto
 
 export XROOT_DISTRO_SHA256 := $(SHA256)
 
-.PHONY: all binaries build list images login remove rename reset backup restore clear-cache tool clean help lint test release
+.PHONY: all binaries windows-launchers build list images login remove rename reset backup restore clear-cache tool clean help lint test release
 
 all: binaries
 
 binaries: $(BIN) $(ALIAS) ## Compila ambos binarios (sin instalar rootfs)
+
+windows-launchers: ## Compila los lanzadores Windows para WSL2 (requiere MinGW-w64)
+	$(WINDOWS_CC) -municode -static -O2 -Wall -Wextra -o xroot-distro.exe windows-launcher.c
+	cp xroot-distro.exe xd.exe
 
 $(BIN): $(SRC)
 	$(CC) $(CFLAGS) -o $@ $< $(LDLIBS)
@@ -72,7 +77,7 @@ tool: $(BIN) $(ALIAS) ## Instala ambos binarios en $(PREFIX)/bin
 	install -m 755 $(ALIAS) $(PREFIX)/bin/$(ALIAS)
 
 clean: ## Borra solo el binario compilado
-	rm -f $(BIN) $(ALIAS)
+	rm -f $(BIN) $(ALIAS) xroot-distro.exe xd.exe
 
 help: $(BIN) ## Muestra la ayuda
 	@./$(BIN) help
@@ -93,7 +98,7 @@ release: binaries ## Prepara artefactos para GitHub Releases en dist/
 	mkdir -p $(DIST)/pkg $(DIST)/src
 	cp $(BIN) $(ALIAS) $(DIST)/pkg/
 	tar -czf $(DIST)/$(ASSET) -C $(DIST)/pkg $(BIN) $(ALIAS)
-	cp Makefile xroot-distro.c test.sh README.md .clang-tidy $(DIST)/src/
+	cp Makefile xroot-distro.c windows-launcher.c install-wsl.ps1 test.sh README.md .clang-tidy $(DIST)/src/
 	tar -czf $(DIST)/xroot-distro-src-$(VERSION).tar.gz -C $(DIST)/src .
 	cd $(DIST) && sha256sum $(ASSET) xroot-distro-src-$(VERSION).tar.gz > SHA256SUMS
 	rm -rf $(DIST)/pkg $(DIST)/src
