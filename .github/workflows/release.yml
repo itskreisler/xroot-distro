@@ -68,22 +68,27 @@ jobs:
           $repoLinuxPath = (& wsl.exe --distribution Debian --user root --exec wslpath -a $repoWindowsPath | Out-String).Trim()
           if ($LASTEXITCODE -ne 0 -or -not $repoLinuxPath) { throw 'No se pudo acceder al checkout desde WSL' }
 
-          $escapedQuote = "'" + '"' + "'" + '"' + "'"
-          $quotedRepo = "'" + $repoLinuxPath.Replace("'", $escapedQuote) + "'"
-          $setupCommand = @"
-          set -eu
-          apt-get update -qq
-          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential libcurl4-openssl-dev zlib1g-dev liblzma-dev libssl-dev
-          mkdir -p /tmp/xroot-distro-windows-smoke
-          cp -a $quotedRepo/. /tmp/xroot-distro-windows-smoke/
-          make -C /tmp/xroot-distro-windows-smoke binaries
-          install -m 755 /tmp/xroot-distro-windows-smoke/xroot-distro /usr/local/bin/xroot-distro
-          install -m 755 /tmp/xroot-distro-windows-smoke/xd /usr/local/bin/xd
-          "@
-          $setupCommand = $setupCommand.Replace("`r`n", "`n")
+          $wslPrefix = @('--distribution', 'Debian', '--user', 'root', '--exec')
+          & wsl.exe @wslPrefix apt-get update -qq
+          if ($LASTEXITCODE -ne 0) { throw "apt-get update falló en WSL: $LASTEXITCODE" }
 
-          & wsl.exe --distribution Debian --user root --exec sh -lc $setupCommand
-          if ($LASTEXITCODE -ne 0) { throw "Falló la compilación/instalación en WSL: $LASTEXITCODE" }
+          & wsl.exe @wslPrefix env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential libcurl4-openssl-dev zlib1g-dev liblzma-dev libssl-dev
+          if ($LASTEXITCODE -ne 0) { throw "La instalación de dependencias falló en WSL: $LASTEXITCODE" }
+
+          & wsl.exe @wslPrefix mkdir -p /tmp/xroot-distro-windows-smoke
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo crear el directorio de build en WSL: $LASTEXITCODE" }
+
+          & wsl.exe @wslPrefix cp -a "$repoLinuxPath/." /tmp/xroot-distro-windows-smoke/
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo copiar el código fuente a WSL: $LASTEXITCODE" }
+
+          & wsl.exe @wslPrefix make -C /tmp/xroot-distro-windows-smoke binaries
+          if ($LASTEXITCODE -ne 0) { throw "La compilación Linux falló en WSL: $LASTEXITCODE" }
+
+          & wsl.exe @wslPrefix install -m 755 /tmp/xroot-distro-windows-smoke/xroot-distro /usr/local/bin/xroot-distro
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar xroot-distro en WSL: $LASTEXITCODE" }
+
+          & wsl.exe @wslPrefix install -m 755 /tmp/xroot-distro-windows-smoke/xd /usr/local/bin/xd
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar xd en WSL: $LASTEXITCODE" }
 
       - name: Probar los ejecutables Windows contra WSL2
         if: ${{ !contains(github.event.head_commit.message, '[skip windows-tests]') }}
