@@ -60,6 +60,7 @@ install -m 755 "`$tmp/xroot-distro" /usr/local/bin/xroot-distro
 install -m 755 "`$tmp/xd" /usr/local/bin/xd
 /usr/local/bin/xd help >/dev/null
 "@
+$installCommand = $installCommand.Replace("`r`n", "`n")
 
 & wsl.exe @distroArgs --user root --exec sh -lc $installCommand
 if ($LASTEXITCODE -ne 0) {

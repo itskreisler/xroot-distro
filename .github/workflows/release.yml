@@ -80,6 +80,7 @@ jobs:
           install -m 755 /tmp/xroot-distro-windows-smoke/xroot-distro /usr/local/bin/xroot-distro
           install -m 755 /tmp/xroot-distro-windows-smoke/xd /usr/local/bin/xd
           "@
+          $setupCommand = $setupCommand.Replace("`r`n", "`n")
 
           & wsl.exe --distribution Debian --user root --exec sh -lc $setupCommand
           if ($LASTEXITCODE -ne 0) { throw "Falló la compilación/instalación en WSL: $LASTEXITCODE" }
